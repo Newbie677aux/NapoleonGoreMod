@@ -39,23 +39,24 @@ function Save-Sfx([string]$rel, [float[]]$wave) {
 }
 $result = New-Object System.Collections.Generic.List[object]
 
-# Пуля в тело: короткий удар по мясу (разная высота) + слабый мокрый слой. ~0.35 с.
+# Пуля в тело: короткий удар по мясу (разная высота) + громкий мокрый слой. ~0.35 с.
 $bulletSpeed = 1.00, 1.12, 0.92, 1.06, 0.97, 1.18, 0.88, 1.03
 for ($i = 0; $i -lt 8; $i++) {
     $hit = [Sfx]::Slice([Sfx]::Speed($meat[$i % 2], $bulletSpeed[$i]), 0, 0.30, 0.15)
-    $wet = [Sfx]::Slice($splats[8 + $i].Wave, 0, 0.30, 0.20)          # средние по силе шлепки
-    $w = [Sfx]::Normalize([Sfx]::Mix($hit, $wet, 0.01, 0.45), 1.0)
-    $w = [Sfx]::Normalize([Sfx]::SoftClip($w, 2.2), 0.95)          # громкость на уровне USM (rms ~0.2)
+    $wet = [Sfx]::Slice($splats[8 + $i].Wave, 0, 0.32, 0.20)          # средние по силе шлепки
+    $w = [Sfx]::Normalize([Sfx]::Mix($hit, $wet, 0.005, 0.9), 1.0)    # мокрый слой громко: середину ухо слышит лучше баса
+    $w = [Sfx]::Normalize([Sfx]::SoftClip($w, 4.0), 0.98)          # плотно: в бою тонет в залпах, поэтому громче USM
     $result.Add((Save-Sfx ("sfx\weapons\bullet_impacts\emp_hyb_bullet_hitbody_{0:D2}_v1.00_gme.wav" -f ($i + 1)) $w))
 }
 
-# Ядро по людям: низкий глухой удар + два крупных хлюпа. ~0.8 с, пик как у USM (0.8).
+# Ядро по людям: низкий глухой удар + два крупных хлюпа. ~0.8 с, сжато для громкости.
 $cannonSpeed = 0.70, 0.62, 0.75, 0.66, 0.72, 0.60, 0.68, 0.78
 for ($i = 0; $i -lt 8; $i++) {
     $thud = [Sfx]::LowPass([Sfx]::Speed($meat[$i % 2], $cannonSpeed[$i]), 1800)
     $w = [Sfx]::Mix($thud, [Sfx]::Speed($splats[$i].Wave, 0.85), 0.02, 0.9)       # самые сильные шлепки
     $w = [Sfx]::Mix($w, $splats[16 + $i].Wave, 0.12 + 0.02 * ($i % 3), 0.6)
-    $w = [Sfx]::Normalize([Sfx]::Slice($w, 0, 0.85, 0.35), 0.80)
+    $w = [Sfx]::Normalize([Sfx]::Slice($w, 0, 0.85, 0.35), 1.0)
+    $w = [Sfx]::Normalize([Sfx]::SoftClip($w, 3.0), 0.98)
     $result.Add((Save-Sfx ("sfx\weapons\cannonballhitflesh\emp_hyb_cannonball_hitflesh_{0:D2}_v1.00_gme.wav" -f ($i + 1)) $w))
 }
 
