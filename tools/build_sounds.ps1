@@ -15,7 +15,7 @@ $Tmp = (Resolve-Path $Tmp).Path; $Out = (Resolve-Path $Out).Path
 # FLAC -> WAV встроенными средствами Windows
 foreach ($f in Get-ChildItem $Src -Filter *.flac) {
     $wav = Join-Path $Tmp ($f.BaseName + '.wav')
-    if (-not (Test-Path $wav)) { & "$PSScriptRoot\flac2wav.ps1" -In $f.FullName -Out $wav | Out-Null }
+    if (-not (Test-Path $wav)) { & "$PSScriptRoot\audioconv.ps1" -In $f.FullName -Out $wav | Out-Null }
 }
 $meat = @([Sfx]::Load("$Tmp\qubodupImpactMeat01.wav"), [Sfx]::Load("$Tmp\qubodupImpactMeat02.wav"))
 

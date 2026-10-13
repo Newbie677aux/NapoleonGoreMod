@@ -128,8 +128,11 @@ foreach ($k in $ev.Keys) {
 if (-not $eb) { Ok "$($ev.Count) файлов событий: формат и порядок времени в норме, код 102 в $with" }
 
 Write-Host '== 9. Чужие паки не тронуты ==' -ForegroundColor Cyan
-$recent = @(Get-ChildItem -LiteralPath $Data -Filter *.pack | Where-Object { $_.Name -ne 'zz_NapoleonGoreMod.pack' -and $_.LastWriteTime -gt [datetime]'2026-10-13' })
-if ($recent.Count) { Bad "менялись сегодня: $($recent.Name -join ', ')" } else { Ok 'ни один пак игры/DarthMod не менялся сегодня' }
+# Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
+$backup = Get-ChildItem "$env:APPDATA\The Creative Assembly\Napoleon" -Directory -Filter '_backup_*' -ErrorAction SilentlyContinue | Sort-Object CreationTime | Select-Object -First 1
+$since = if ($backup) { $backup.CreationTime } else { (Get-Date).Date }
+$recent = @(Get-ChildItem -LiteralPath $Data -Filter *.pack | Where-Object { $_.Name -ne 'zz_NapoleonGoreMod.pack' -and $_.LastWriteTime -gt $since })
+if ($recent.Count) { Bad "менялись после $($since.ToString('dd.MM.yyyy HH:mm')): $($recent.Name -join ', ')" } else { Ok "ни один пак игры/DarthMod не менялся после $($since.ToString('dd.MM.yyyy HH:mm'))" }
 
 Write-Host ''
 if ($fail) { Write-Host "ИТОГ: $fail ошибок, $warn предупреждений" -ForegroundColor Red; exit 1 }

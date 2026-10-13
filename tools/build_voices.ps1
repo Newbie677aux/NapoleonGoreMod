@@ -41,8 +41,15 @@ function Strip-Mp3([byte[]]$b) {
     $out = New-Object byte[] ($end - $start); [Array]::Copy($b, $start, $out, 0, $out.Length); $out
 }
 
-# Громче без перегруза: пик к 1.0, мягкое сжатие, запас 0.97
-function Louder([float[]]$x) { [Sfx]::Normalize([Sfx]::SoftClip([Sfx]::Normalize($x, 1.0), 2.0), 0.97) }
+# Громче без перегруза: пик к 1.0 (но усиление не больше x3 — у тихих записей иначе лезет шум),
+# мягкое сжатие, запас 0.97. Меняешь формулу — меняй $Recipe, иначе MP3 возьмутся из кэша.
+$Recipe = 'louder-v2-cap3'
+function Louder([float[]]$x) {
+    $peak = [math]::Min(1.0, [Sfx]::Peak($x) * 3.0)
+    [Sfx]::Normalize([Sfx]::SoftClip([Sfx]::Normalize($x, $peak), 2.0), 0.97 * $peak)
+}
+$stamp = "$Out\.recipe"
+if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $Recipe) { $Force = $true; Write-Host "Рецепт громкости изменился — пересобираю все крики" }
 
 Write-Host '== Чтение криков из sound.pack ==' -ForegroundColor Cyan
 $cries = Read-PackFiles (Join-Path $GameDir 'data\sound.pack') 'death_cry_fall_scream[^\\]*\.mp3$|\\actor_1\\individuals_grunt_[123]\.mp3$'
@@ -74,4 +81,5 @@ foreach ($path in $cries.Keys | Sort-Object) {
     $done++
     if ($done % 25 -eq 0) { Write-Host "  $done / $($cries.Count)" }
 }
+Set-Content -LiteralPath $stamp -Value $Recipe
 Write-Host "Криков громче: $(@(Get-ChildItem $Out -Filter *.mp3).Count), стонов в наборе: $(@(Get-ChildItem $Pool -Filter *.wav).Count)" -ForegroundColor Green
