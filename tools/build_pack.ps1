@@ -51,12 +51,14 @@ foreach ($e in 'small_bloodspray1', 'small_bloodspray2', 'small_bloodspray3', 'b
 }
 
 # Бюджет под слабую видеокарту: капли живут ~1.5-2 с, жёсткие лимиты на число эффектов и квадов.
-# Пули: чуть крупнее одиночная струйка + короткий веер мелких брызг.
+# Пули: струйка + веер брызг (по 2 капли на точку выпуска) + красное облачко, видное издалека.
 $xml = Edit-Effect $xml 'small_bloodspray1' @{
+    num_particles_per_point = '2'; emission_time_range_seconds = 'variance(0.060000,0.000000)'
     initial_scale_range_metres = 'vector(variance(0.550000,0.250000),variance(0.040000,0.100000))'
     life_range = 'variance(1.500000,0.300000)'; max_effects = '200'; max_num_quads = '400'
 }
 $xml = Edit-Effect $xml 'small_bloodspray3' @{
+    num_particles_per_point = '2'
     initial_scale_range_metres = 'vector(variance(0.400000,0.250000),variance(0.030000,0.080000))'
     life_range = 'variance(1.500000,0.300000)'; max_effects = '150'; max_num_quads = '500'
 }
@@ -68,9 +70,10 @@ $xml = Edit-Effect $xml 'small_bloodspray2' @{
     life_range = 'variance(1.800000,0.400000)'; max_effects = '60'; max_num_quads = '500'
 }
 $xml = Edit-Effect $xml 'blood_mist' @{
-    life_range = 'variance(1.000000,0.200000)'; max_effects = '40'; max_num_quads = '300'
+    life_range = 'variance(1.000000,0.200000)'; max_effects = '120'; max_num_quads = '600'
 }
 $xml = Add-GroupEntry $xml 'blood_spray' 'blood_mist'
+$xml = Add-GroupEntry $xml 'Musket_impact_human' 'blood_mist'
 
 $doc = New-Object Xml.XmlDocument; $doc.LoadXml($xml)   # проверка, что XML не сломан
 
@@ -90,6 +93,26 @@ if (-not $NoSounds) {
             $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)
         }
         Write-Host "Криков в паке: $(@($files.Keys | Where-Object { $_ -like '*death_cry*' }).Count)"
+
+        # Крик в каждой смерти. anim_sound_event: u32 версия=1, u32 N, затем N x (float время, u32 код).
+        # Коды 102-105 встречаются только в анимациях смерти (~25% из них) — считаем их вызовом крика.
+        # Где крика нет, добавляем 102 в начало падения.
+        $events = Read-PackFiles (Join-Path $Data 'sound.pack') '^animations\\men\\.*(death|die)[^\\]*\.anim_sound_event$'
+        $added = 0
+        foreach ($path in $events.Keys) {
+            $b = $events[$path]
+            if ($b.Length -lt 8 -or [BitConverter]::ToUInt32($b, 0) -ne 1) { continue }
+            $n = [BitConverter]::ToUInt32($b, 4)
+            if ($b.Length -ne 8 + 8 * $n) { continue }
+            $list = for ($i = 0; $i -lt $n; $i++) { [pscustomobject]@{ T = [BitConverter]::ToSingle($b, 8 + 8 * $i); Id = [BitConverter]::ToUInt32($b, 12 + 8 * $i) } }
+            if (@($list | Where-Object { $_.Id -ge 102 -and $_.Id -le 105 }).Count) { continue }
+            $list = @(@($list) + [pscustomobject]@{ T = [single]0.12; Id = [uint32]102 } | Sort-Object T)
+            $ms = New-Object IO.MemoryStream; $bw = New-Object IO.BinaryWriter($ms)
+            $bw.Write([uint32]1); $bw.Write([uint32]$list.Count)
+            foreach ($e in $list) { $bw.Write([single]$e.T); $bw.Write([uint32]$e.Id) }
+            $files[$path] = $ms.ToArray(); $added++
+        }
+        Write-Host "Смертей с добавленным криком: $added из $($events.Count)"
     }
     Write-Host '== Звуки попаданий ==' -ForegroundColor Cyan
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" | Out-Null
