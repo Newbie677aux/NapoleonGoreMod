@@ -26,3 +26,20 @@ powershell -ExecutionPolicy Bypass -File tools\step1_backup_and_recon.ps1
 - **Да:** кровь от пуль и ядер (правка `effects\landbattle.xml`, взятого из DarthMod), звуки попаданий (WAV по путям USM).
 - **Частично:** пятна на земле (плоские частицы с жизнью 15–20 с).
 - **Нет:** отлетающие головы и дыры в телах (в движке нет расчленения).
+
+## Сборка и установка
+
+```
+powershell -ExecutionPolicy Bypass -File tools\build_pack.ps1             # собрать и положить в data\
+powershell -ExecutionPolicy Bypass -File tools\build_pack.ps1 -Uninstall  # убрать мод
+```
+
+Результат: `data\zz_NapoleonGoreMod.pack` (movie-пак, `user.script.txt` не трогается).
+Префикс `zz_` обязателен: так пак грузится после `DMN_*` и перекрывает их `landbattle.xml`.
+Это проверено в игре через `tools\build_test_pack.ps1`, где у паков разные цвета крови.
+
+Сейчас в моде:
+- тёмно-красная кровь (своя текстура `gore_blood_diffuse.tga` той же формы, что у DarthMod);
+- пули: струйка чуть крупнее плюс короткий веер мелких брызг;
+- ядра: крупный выброс плюс облачко брызг (`blood_mist`);
+- жёсткие лимиты частиц (40–150 эффектов на тип, капли живут 1–2 с) под слабые видеокарты.
