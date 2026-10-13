@@ -18,3 +18,11 @@
 ```
 powershell -ExecutionPolicy Bypass -File tools\step1_backup_and_recon.ps1
 ```
+
+## Шаг 3: что реально сделать
+
+Отчёт: [docs/step3_report.md](docs/step3_report.md). Кратко:
+
+- **Да:** кровь от пуль и ядер (правка `effects\landbattle.xml`, взятого из DarthMod), звуки попаданий (WAV по путям USM).
+- **Частично:** пятна на земле (плоские частицы с жизнью 15–20 с).
+- **Нет:** отлетающие головы и дыры в телах (в движке нет расчленения).
