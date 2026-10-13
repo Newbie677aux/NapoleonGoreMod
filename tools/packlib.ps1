@@ -23,6 +23,28 @@ function Read-PackFile([string]$pack, [string]$entry) {
     } finally { $br.Close() }
 }
 
+# Все файлы пака, чей путь подходит под regex: @{ путь = байты }. Один проход по индексу.
+function Read-PackFiles([string]$pack, [string]$pattern) {
+    $fs = [IO.File]::OpenRead($pack); $br = New-Object IO.BinaryReader($fs)
+    $result = @{}
+    try {
+        $magic = [Text.Encoding]::ASCII.GetString($br.ReadBytes(4))
+        if ($magic -ne 'PFH0') { throw "$pack : неожиданный формат $magic" }
+        $null = $br.ReadUInt32(); $null = $br.ReadUInt32(); $depSize = $br.ReadUInt32()
+        $count = $br.ReadUInt32(); $idxSize = $br.ReadUInt32()
+        $null = $br.ReadBytes($depSize); $idx = $br.ReadBytes($idxSize)
+        $offset = [int64](24 + $depSize + $idxSize); $p = 0
+        for ($i = 0; $i -lt $count; $i++) {
+            $size = [BitConverter]::ToUInt32($idx, $p); $p += 4
+            $e = [Array]::IndexOf($idx, [byte]0, $p)
+            $name = [Text.Encoding]::ASCII.GetString($idx, $p, $e - $p); $p = $e + 1
+            if ($name -match $pattern) { $fs.Position = $offset; $result[$name] = $br.ReadBytes($size) }
+            $offset += $size
+        }
+    } finally { $br.Close() }
+    $result
+}
+
 # ---------- запись PFH0 (без сжатия) ----------
 function Write-Pack([string]$path, [int]$type, [hashtable]$files) {
     $names = $files.Keys | Sort-Object

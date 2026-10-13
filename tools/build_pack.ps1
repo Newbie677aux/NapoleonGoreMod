@@ -8,7 +8,8 @@
 param(
     [string]$GameDir = 'E:\Steam\steamapps\common\Napoleon Total War',
     [switch]$NoInstall,
-    [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий
+    [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий и криков
+    [switch]$NoVoices,     # без криков: родные крики не громче, в попаданиях нет стонов
     [switch]$Uninstall
 )
 
@@ -78,6 +79,18 @@ $files = @{
     $TexPath                 = $texBytes
 }
 if (-not $NoSounds) {
+    $pool = Join-Path $OutDir 'voice_pool'
+    if ($NoVoices) {
+        if (Test-Path $pool) { Remove-Item -Recurse $pool }   # build_sounds без набора стонов = чистые удары
+    } else {
+        Write-Host '== Крики (долго при первой сборке) ==' -ForegroundColor Cyan
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_voices.ps1" -GameDir $GameDir | Out-Null
+        if ($LASTEXITCODE) { throw 'build_voices.ps1 завершился с ошибкой' }
+        foreach ($f in Get-ChildItem (Join-Path $OutDir 'voices') -Filter *.mp3) {
+            $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)
+        }
+        Write-Host "Криков в паке: $(@($files.Keys | Where-Object { $_ -like '*death_cry*' }).Count)"
+    }
     Write-Host '== Звуки попаданий ==' -ForegroundColor Cyan
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" | Out-Null
     if ($LASTEXITCODE) { throw 'build_sounds.ps1 завершился с ошибкой' }
