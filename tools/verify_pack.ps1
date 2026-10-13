@@ -101,6 +101,28 @@ Write-Host '== 7. Нет криков MP3 и правок анимаций см�
 # Громкие death_cry и событие 102 в анимациях смерти были ошибочной гипотезой (в игре криков не стало) — убраны
 $extra = @($ix.Files.Keys | Where-Object { $_ -like '*.mp3' -or $_ -like '*.anim_sound_event' })
 if ($extra.Count) { Bad "в паке остались убранные файлы: $($extra.Count) (например $($extra[0]))" } else { Ok 'MP3 криков и событий анимаций в паке нет' }
+Write-Host '== 7a. Таблицы звуковых событий: изменены только нужные строки ==' -ForegroundColor Cyan
+$expectRows = @{
+    'sounds\events\sound_events_voices_land.csv' = @('Unit_Voices_Death_Gen')
+    'sounds\events\sound_events_weapons.csv'     = @('PROJECTILE_BulletImpactFlesh', 'PROJECTILE_CannonballImpactFlesh')
+    'sounds\events\sound_events_animations.csv'  = @('axe_hit_flesh', 'bayonet_hit_flesh', 'bayonet_impact_flesh', 'club_hit_flesh',
+        'lance_spear_hit_flesh', 'longsword_hit_flesh', 'pike_hit_flesh', 'sabre_hit_flesh', 'musket_impact_body')
+}
+$ourCsv = Read-PackFiles $Pack '^sounds\\events\\.*\.csv$'
+$origCsv = Read-PackFiles (Join-Path $Data 'sound.pack') '^sounds\\events\\.*\.csv$'
+foreach ($k in $ourCsv.Keys) {
+    $a = $Latin1.GetString($origCsv[$k]) -split "`r`n"; $b = $Latin1.GetString($ourCsv[$k]) -split "`r`n"
+    if ($a.Count -ne $b.Count) { Bad "$k : число строк изменилось ($($a.Count) -> $($b.Count))"; continue }
+    $changed = @(for ($i = 0; $i -lt $a.Count; $i++) { if ($a[$i] -ne $b[$i]) { ($b[$i] -split ',')[0].Trim('"') } })
+    $diffCols = @(for ($i = 0; $i -lt $a.Count; $i++) { if ($a[$i] -ne $b[$i]) {
+        $fa = $a[$i] -split ','; $fb = $b[$i] -split ','
+        if ($fa.Count -ne $fb.Count) { 'число колонок' } else { for ($c = 0; $c -lt $fa.Count; $c++) { if ($fa[$c] -ne $fb[$c] -and @(2, 5, 6, 13, 35) -notcontains $c) { "колонка $c" } } }
+    } })
+    if (@(Compare-Object @($expectRows[$k]) $changed).Count) { Bad "$k : изменены строки $($changed -join ', ')" }
+    elseif ($diffCols.Count) { Bad "$k : тронуты лишние колонки ($($diffCols -join ', '))" }
+    else { Ok "$(Split-Path $k -Leaf): изменено $($changed.Count) строк, только громкость/дальность/вероятность/лимит" }
+}
+if ($ourCsv.Count -ne $expectRows.Count) { Bad "таблиц событий в паке $($ourCsv.Count), ожидалось $($expectRows.Count)" }
 Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
 # Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
 $backup = Get-ChildItem "$env:APPDATA\The Creative Assembly\Napoleon" -Directory -Filter '_backup_*' -ErrorAction SilentlyContinue | Sort-Object CreationTime | Select-Object -First 1

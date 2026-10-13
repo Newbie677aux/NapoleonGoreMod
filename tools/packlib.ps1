@@ -78,6 +78,20 @@ function Edit-Effect([string]$xml, [string]$effect, [hashtable]$attrs) {
     $xml.Substring(0, $start) + $block + $xml.Substring($end)
 }
 
+# Таблицы звуковых событий sounds\events\*.csv: одна строка = событие, колонки через запятую
+# (0 имя, 2 громкость, 5 min_dist — до этой дистанции звук не затухает, 6 max_dist — дальше не слышно,
+#  13 вероятность, 35 сколько таких звуков одновременно). Меняет колонки строки события, остальное
+# байт-в-байт как было. Имя бывает в кавычках.
+function Set-SoundEvent([string]$csv, [string]$name, [hashtable]$cols) {
+    $re = '(?m)^("?)' + [regex]::Escape($name) + '\1,[^\r\n]*'
+    $m = [regex]::Match($csv, $re)
+    if (-not $m.Success) { throw "Звуковое событие $name не найдено" }
+    if ([regex]::Matches($csv, $re).Count -ne 1) { throw "Звуковое событие $name встречается не один раз" }
+    $f = $m.Value -split ','
+    foreach ($i in $cols.Keys) { $f[[int]$i] = [string]$cols[$i] }
+    $csv.Substring(0, $m.Index) + ($f -join ',') + $csv.Substring($m.Index + $m.Length)
+}
+
 # Убирает из всех групп записи, ссылающиеся на эффект (сам эффект остаётся в файле). Возвращает новый XML.
 function Remove-GroupEntries([string]$xml, [string]$effect) {
     [regex]::Replace($xml, "[ \t]*<SCRIPTED_EFFECT_GROUP_ENTRY name='[^']*' effect='$([regex]::Escape($effect))' />[ \t]*\r?\n", '')
