@@ -12,6 +12,8 @@ param(
     [switch]$NoVoices,     # без стонов в звуках попадания
     [int]$VoiceEvery = 2,  # стон в каждом N-м варианте звука попадания (1 = во всех)
     [switch]$NoSmoke,      # не трогать пороховой дым DarthMod
+    [switch]$NoPerf,       # без оптимизаций FPS (дальность/потолки дыма, дрожание воздуха)
+    [switch]$KeepDistortion, # оптимизировать, но оставить дрожание воздуха
     [switch]$Uninstall
 )
 
@@ -96,6 +98,30 @@ if (-not $NoSmoke) {
         $xml = Edit-Effect $xml $e @{ min_lod_range = 'variance(25.000000,0.000000)' }
     }
     $xml = Edit-Effect $xml 'Uber_smoke_white' @{ min_lod_range = 'variance(25.000000,0.000000)'; life_range = 'variance(60.000000,5.000000)' }
+}
+
+if (-not $NoPerf) {
+    # FPS: у DarthMod дым рисуется до 10 км (ваниль 1 км) и держит в 10-20 раз больше частиц, чем ваниль.
+    # 1) Дальность 2 км: дальше дым — пара пикселей у горизонта, а считается целиком.
+    # 2) Потолок частиц вдвое ниже DarthMod (всё ещё в 5-10 раз выше ванили) — срезает только самые
+    #    тяжёлые моменты огромных сражений.
+    $far = 'Uber_smoke_white', 'flash_dir_tiny', 'landgun_fastsmoke', 'landgun_med_1', 'landgun_med_2', 'landgun_med_2_whispy',
+           'landgun_med_3', 'musket_1', 'musket_2', 'musket_3', 'small_bloodspray2'
+    foreach ($e in $far) { $xml = Edit-Effect $xml $e @{ max_lod_range = 'variance(2000.000000,0.000000)' } }
+    foreach ($e in 'Uber_smoke_white', 'landgun_fastsmoke', 'landgun_med_1', 'landgun_med_2', 'landgun_med_2_whispy', 'landgun_med_3') {
+        $xml = Edit-Effect $xml $e @{ max_num_quads = '5000' }
+    }
+    foreach ($e in 'musket_1', 'musket_2', 'musket_3') { $xml = Edit-Effect $xml $e @{ max_num_quads = '10000' } }
+
+    # 3) Дрожание воздуха (RENDER_METHOD_DISTORTION): любой такой эффект на экране — лишний проход
+    #    по всей картинке. Убираем из групп (выстрелы, попадания ядер, марево жары); -KeepDistortion оставляет.
+    if (-not $KeepDistortion) {
+        $dist = [regex]::Matches($xml, "<SCRIPTED_EFFECT_INFO name='([^']+)'(?:(?!</SCRIPTED_EFFECT_INFO>)[\s\S])*?render_method='RENDER_METHOD_DISTORTION'") |
+            ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique |
+            Where-Object { $_ -notlike '*heathaze*' }   # марево жары — единственный эффект своей группы; пустую группу не оставляем
+        foreach ($e in $dist) { $xml = Remove-GroupEntries $xml $e }
+        Write-Host "Эффектов дрожания воздуха убрано из групп: $(@($dist).Count)"
+    }
 }
 
 $doc = New-Object Xml.XmlDocument; $doc.LoadXml($xml)   # проверка, что XML не сломан

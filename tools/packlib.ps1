@@ -78,6 +78,11 @@ function Edit-Effect([string]$xml, [string]$effect, [hashtable]$attrs) {
     $xml.Substring(0, $start) + $block + $xml.Substring($end)
 }
 
+# Убирает из всех групп записи, ссылающиеся на эффект (сам эффект остаётся в файле). Возвращает новый XML.
+function Remove-GroupEntries([string]$xml, [string]$effect) {
+    [regex]::Replace($xml, "[ \t]*<SCRIPTED_EFFECT_GROUP_ENTRY name='[^']*' effect='$([regex]::Escape($effect))' />[ \t]*\r?\n", '')
+}
+
 function Add-GroupEntry([string]$xml, [string]$group, [string]$effect) {
     $start = $xml.IndexOf("<SCRIPTED_EFFECT_GROUP name='$group'")
     if ($start -lt 0) { throw "Группа $group не найдена" }

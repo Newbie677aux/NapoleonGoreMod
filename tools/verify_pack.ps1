@@ -63,6 +63,8 @@ try { $doc = New-Object Xml.XmlDocument; $doc.LoadXml($xml); Ok 'landbattle.xml 
 $effects = @{}; foreach ($n in $doc.SelectNodes('//SCRIPTED_EFFECT_INFO')) { $effects[$n.name] = $n }
 $missing = @($doc.SelectNodes('//SCRIPTED_EFFECT_GROUP_ENTRY') | Where-Object { -not $effects.ContainsKey($_.effect) } | ForEach-Object { $_.effect } | Select-Object -Unique)
 if ($missing.Count) { Bad "группы ссылаются на несуществующие эффекты: $($missing -join ', ')" } else { Ok "все записи групп ссылаются на существующие эффекты ($($effects.Count))" }
+$emptyG = @($doc.SelectNodes('//SCRIPTED_EFFECT_GROUP') | Where-Object { -not $_.SelectNodes('SCRIPTED_EFFECT_GROUP_ENTRY').Count } | ForEach-Object name)
+if ($emptyG.Count) { Bad "пустые группы эффектов: $($emptyG -join ', ')" } else { Ok 'пустых групп эффектов нет' }
 $tex = @($doc.SelectNodes('//SCRIPTED_EFFECT_RENDERING_VARS') | ForEach-Object { $_.texture_1; $_.texture_2 } | Select-Object -Unique)
 $noTex = @($tex | Where-Object { $_ -and $_.TrimStart('\').ToLower() -ne $ours -and -not $orig.ContainsKey($_.TrimStart('\').ToLower()) })   # ведущий \ есть ещё в ванили
 if ($noTex.Count) { Warn "текстуры не найдены в паках: $($noTex -join ', ')" } else { Ok 'все текстуры эффектов на месте' }
