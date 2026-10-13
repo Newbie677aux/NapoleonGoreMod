@@ -11,6 +11,7 @@ param(
     [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий
     [switch]$NoVoices,     # без стонов в звуках попадания
     [int]$VoiceEvery = 2,  # стон в каждом N-м варианте звука попадания (1 = во всех)
+    [switch]$NoSmoke,      # не трогать пороховой дым DarthMod
     [switch]$Uninstall
 )
 
@@ -75,6 +76,27 @@ $xml = Edit-Effect $xml 'blood_mist' @{
 }
 $xml = Add-GroupEntry $xml 'blood_spray' 'blood_mist'
 $xml = Add-GroupEntry $xml 'Musket_impact_human' 'blood_mist'
+
+if (-not $NoSmoke) {
+    # Пороховой дым DarthMod: живёт долго (мушкет ~33 с, пушки 80-120 с), но тает уже с 40% жизни
+    # (fadeout = доля жизни на затухание в конце, как fadein — в начале) и рисуется вплотную к камере
+    # (min_lod 0.5-1 м; в ванили 10-90 м — так CA не давали облаку заливать весь экран слоями).
+    # 1) min_lod — ближняя граница: облако ближе к камере не рисуется, FPS не падает при нырке в дым.
+    #    У мушкетного дыма у линии 12 м, у больших облаков 25 м.
+    # 2) Тает только последние 35% жизни — дым дольше держится плотным, после залпов висит пелена.
+    # 3) Основной мушкетный клуб: 2 частицы вместо 3, чтобы плотный дым не стоил дороже прежнего.
+    foreach ($e in 'musket_1', 'musket_3') {
+        $xml = Edit-Effect $xml $e @{ min_lod_range = 'variance(12.000000,0.000000)'; fadeout_range_life_unary = 'variance(0.350000,0.000000)' }
+    }
+    $xml = Edit-Effect $xml 'musket_1' @{ num_particles_per_point = '2' }
+    foreach ($e in 'musket_2', 'landgun_med_1') {
+        $xml = Edit-Effect $xml $e @{ min_lod_range = 'variance(25.000000,0.000000)'; fadeout_range_life_unary = 'variance(0.350000,0.000000)' }
+    }
+    foreach ($e in 'landgun_med_3', 'landgun_med_2_whispy') {
+        $xml = Edit-Effect $xml $e @{ min_lod_range = 'variance(25.000000,0.000000)' }
+    }
+    $xml = Edit-Effect $xml 'Uber_smoke_white' @{ min_lod_range = 'variance(25.000000,0.000000)'; life_range = 'variance(60.000000,5.000000)' }
+}
 
 $doc = New-Object Xml.XmlDocument; $doc.LoadXml($xml)   # проверка, что XML не сломан
 
