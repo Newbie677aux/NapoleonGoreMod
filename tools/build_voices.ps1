@@ -19,6 +19,28 @@ $Build = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path + '\build'
 $Raw   = "$Build\voices_raw";  $Out = "$Build\voices";  $Pool = "$Build\voice_pool"
 New-Item -ItemType Directory -Force $Raw, $Out, $Pool | Out-Null
 
+# Кодировщик Windows пишет в начало ID3v2-тег и нули, в конце бывает ID3v1. Оригинальные крики игры —
+# голые MPEG-кадры, поэтому срезаем всё до первого кадра (проверяем, что за ним идёт второй) и хвостовой тег.
+function Get-FrameLength([byte[]]$b, [int]$i) {
+    if ($i + 4 -gt $b.Length -or $b[$i] -ne 0xFF -or ($b[$i + 1] -band 0xFE) -ne 0xFA) { return 0 }   # MPEG-1 Layer III
+    $rates = 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0
+    $br = $rates[$b[$i + 2] -shr 4]; $srIdx = ($b[$i + 2] -shr 2) -band 3
+    if (-not $br -or $srIdx -eq 3) { return 0 }
+    $sr = (44100, 48000, 32000)[$srIdx]
+    [int][math]::Floor(144000 * $br / $sr) + (($b[$i + 2] -shr 1) -band 1)
+}
+function Strip-Mp3([byte[]]$b) {
+    $start = -1
+    for ($i = 0; $i -lt $b.Length - 4; $i++) {
+        $len = Get-FrameLength $b $i
+        if ($len -and ($i + $len -ge $b.Length -or (Get-FrameLength $b ($i + $len)))) { $start = $i; break }
+    }
+    if ($start -lt 0) { throw 'В MP3 не найдено ни одного кадра' }
+    $end = $b.Length
+    if ($end -ge 128 -and [Text.Encoding]::ASCII.GetString($b, $end - 128, 3) -eq 'TAG') { $end -= 128 }
+    $out = New-Object byte[] ($end - $start); [Array]::Copy($b, $start, $out, 0, $out.Length); $out
+}
+
 # Громче без перегруза: пик к 1.0, мягкое сжатие, запас 0.97
 function Louder([float[]]$x) { [Sfx]::Normalize([Sfx]::SoftClip([Sfx]::Normalize($x, 1.0), 2.0), 0.97) }
 
@@ -43,6 +65,8 @@ foreach ($path in $cries.Keys | Sort-Object) {
             [Sfx]::Save($tmp, $loud)
             & "$PSScriptRoot\audioconv.ps1" -In $tmp -Out $mp3Out | Out-Null
         }
+        $bytes = [IO.File]::ReadAllBytes($mp3Out); $clean = Strip-Mp3 $bytes
+        if ($clean.Length -ne $bytes.Length) { [IO.File]::WriteAllBytes($mp3Out, $clean) }
     }
     # Набор для звуков попадания: актёр 1 шести наций, крики и кряхтение
     if ($path -match '^(uk|fr|ge|ru|sp|it)\\actor_1\\') { [Sfx]::Save("$Pool\$($flat -replace '\.mp3$', '.wav')", $loud) }
