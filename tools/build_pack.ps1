@@ -8,6 +8,7 @@
 param(
     [string]$GameDir = 'E:\Steam\steamapps\common\Napoleon Total War',
     [switch]$NoInstall,
+    [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий
     [switch]$Uninstall
 )
 
@@ -72,11 +73,22 @@ $xml = Add-GroupEntry $xml 'blood_spray' 'blood_mist'
 
 $doc = New-Object Xml.XmlDocument; $doc.LoadXml($xml)   # проверка, что XML не сломан
 
-$packPath = Join-Path $OutDir $PackName
-Write-Pack $packPath 4 @{                                 # 4 = movie, грузится без user.script
+$files = @{
     'effects\landbattle.xml' = $Latin1.GetBytes($xml)
     $TexPath                 = $texBytes
 }
+if (-not $NoSounds) {
+    Write-Host '== Звуки попаданий ==' -ForegroundColor Cyan
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" | Out-Null
+    if ($LASTEXITCODE) { throw 'build_sounds.ps1 завершился с ошибкой' }
+    foreach ($f in Get-ChildItem (Join-Path $OutDir 'sfx') -Filter *.wav) {
+        $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)
+    }
+    Write-Host "Звуков в паке: $(@($files.Keys | Where-Object { $_ -like 'sfx\*' }).Count)"
+}
+
+$packPath = Join-Path $OutDir $PackName
+Write-Pack $packPath 4 $files                             # 4 = movie, грузится без user.script
 Write-Host "Собран: $packPath" -ForegroundColor Green
 
 if (-not $NoInstall) {
