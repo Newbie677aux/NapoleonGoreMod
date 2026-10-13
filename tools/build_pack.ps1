@@ -8,8 +8,9 @@
 param(
     [string]$GameDir = 'E:\Steam\steamapps\common\Napoleon Total War',
     [switch]$NoInstall,
-    [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий и криков
-    [switch]$NoVoices,     # без криков: родные крики не громче, в попаданиях нет стонов
+    [switch]$NoSounds,     # собрать только кровь, без своих звуков попаданий
+    [switch]$NoVoices,     # без стонов в звуках попадания
+    [int]$VoiceEvery = 2,  # стон в каждом N-м варианте звука попадания (1 = во всех)
     [switch]$Uninstall
 )
 
@@ -82,40 +83,13 @@ $files = @{
     $TexPath                 = $texBytes
 }
 if (-not $NoSounds) {
-    $pool = Join-Path $OutDir 'voice_pool'
-    if ($NoVoices) {
-        if (Test-Path $pool) { Remove-Item -Recurse $pool }   # build_sounds без набора стонов = чистые удары
-    } else {
-        Write-Host '== Крики (долго при первой сборке) ==' -ForegroundColor Cyan
+    if (-not $NoVoices) {
+        Write-Host '== Голоса для стонов ==' -ForegroundColor Cyan
         & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_voices.ps1" -GameDir $GameDir | Out-Null
         if ($LASTEXITCODE) { throw 'build_voices.ps1 завершился с ошибкой' }
-        foreach ($f in Get-ChildItem (Join-Path $OutDir 'voices') -Filter *.mp3) {
-            $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)
-        }
-        Write-Host "Криков в паке: $(@($files.Keys | Where-Object { $_ -like '*death_cry*' }).Count)"
-
-        # Крик в каждой смерти. anim_sound_event: u32 версия=1, u32 N, затем N x (float время, u32 код).
-        # Коды 102-105 встречаются только в анимациях смерти (~25% из них) — считаем их вызовом крика.
-        # Где крика нет, добавляем 102 в начало падения.
-        $events = Read-PackFiles (Join-Path $Data 'sound.pack') '^animations\\men\\.*(death|die)[^\\]*\.anim_sound_event$'
-        $added = 0
-        foreach ($path in $events.Keys) {
-            $b = $events[$path]
-            if ($b.Length -lt 8 -or [BitConverter]::ToUInt32($b, 0) -ne 1) { continue }
-            $n = [BitConverter]::ToUInt32($b, 4)
-            if ($b.Length -ne 8 + 8 * $n) { continue }
-            $list = for ($i = 0; $i -lt $n; $i++) { [pscustomobject]@{ T = [BitConverter]::ToSingle($b, 8 + 8 * $i); Id = [BitConverter]::ToUInt32($b, 12 + 8 * $i) } }
-            if (@($list | Where-Object { $_.Id -ge 102 -and $_.Id -le 105 }).Count) { continue }
-            $list = @(@($list) + [pscustomobject]@{ T = [single]0.12; Id = [uint32]102 } | Sort-Object T)
-            $ms = New-Object IO.MemoryStream; $bw = New-Object IO.BinaryWriter($ms)
-            $bw.Write([uint32]1); $bw.Write([uint32]$list.Count)
-            foreach ($e in $list) { $bw.Write([single]$e.T); $bw.Write([uint32]$e.Id) }
-            $files[$path] = $ms.ToArray(); $added++
-        }
-        Write-Host "Смертей с добавленным криком: $added из $($events.Count)"
     }
     Write-Host '== Звуки попаданий ==' -ForegroundColor Cyan
-    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" | Out-Null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" -VoiceEvery $(if ($NoVoices) { 0 } else { $VoiceEvery }) | Out-Null
     if ($LASTEXITCODE) { throw 'build_sounds.ps1 завершился с ошибкой' }
     foreach ($f in Get-ChildItem (Join-Path $OutDir 'sfx') -Filter *.wav) {
         $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)

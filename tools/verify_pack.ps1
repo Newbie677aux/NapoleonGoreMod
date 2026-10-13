@@ -95,39 +95,11 @@ foreach ($k in $wavs.Keys) {
 }
 if (-not $wb) { Ok "$($wavs.Count) WAV: PCM mono 44.1 kHz 16-bit, размеры сходятся" }
 
-Write-Host '== 7. Крики (MP3) ==' -ForegroundColor Cyan
-$mp3 = Read-PackFiles $Pack '\.mp3$'; $mb = 0
-foreach ($k in $mp3.Keys) {
-    $b = $mp3[$k]; $i = 0
-    # Как у оригиналов игры: файл начинается прямо с кадра MPEG-1 Layer III, без ID3, и за ним идёт ещё кадр
-    if ($b.Length -lt 8 -or $b[0] -ne 0xFF -or ($b[1] -band 0xFE) -ne 0xFA) { Bad "MP3 не начинается с кадра: $k"; $mb++; continue }
-    $rates = 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0
-    $flen = [int][math]::Floor(144000 * $rates[$b[2] -shr 4] / 44100) + (($b[2] -shr 1) -band 1)
-    if ($flen -lt 4 -or $flen + 2 -gt $b.Length -or $b[$flen] -ne 0xFF -or ($b[$flen + 1] -band 0xFE) -ne 0xFA) { Bad "MP3 второй кадр не на месте: $k"; $mb++; continue }
-    $ver = ($b[$i + 1] -shr 3) -band 3; $sr = ($b[$i + 2] -shr 2) -band 3; $ch = $b[$i + 3] -shr 6
-    if ($ver -ne 3 -or $sr -ne 0 -or $ch -ne 3) { Bad "MP3 не MPEG1/44.1k/mono: $k"; $mb++ }
-    if ($b.Length -lt 4000) { Bad "MP3 подозрительно мал ($($b.Length) Б): $k"; $mb++ }
-}
-if (-not $mb) { Ok "$($mp3.Count) MP3: MPEG-1, 44.1 kHz, mono" }
-
-Write-Host '== 8. События анимаций смерти ==' -ForegroundColor Cyan
-$ev = Read-PackFiles $Pack '\.anim_sound_event$'; $eb = 0; $with = 0
-$known = @{}; foreach ($id in 21,22,23,24,25,29,30,60,61,66,74,85,90,102,103,104,105,109) { $known[$id] = 1 }
-foreach ($k in $ev.Keys) {
-    $b = $ev[$k]; $n = [BitConverter]::ToUInt32($b, 4)
-    if ([BitConverter]::ToUInt32($b, 0) -ne 1 -or $b.Length -ne 8 + 8 * $n) { Bad "формат: $k"; $eb++; continue }
-    $prev = -1.0; $has = $false
-    for ($i = 0; $i -lt $n; $i++) {
-        $tm = [BitConverter]::ToSingle($b, 8 + 8 * $i); $id = [BitConverter]::ToUInt32($b, 12 + 8 * $i)
-        if ($tm -lt $prev -or $tm -lt 0 -or $tm -gt 30) { Bad "время не по порядку: $k"; $eb++; break }
-        if (-not $known.ContainsKey([int]$id)) { Bad "неизвестный код $id в $k"; $eb++; break }
-        if ($id -eq 102) { $has = $true }; $prev = $tm
-    }
-    if ($has) { $with++ }
-}
-if (-not $eb) { Ok "$($ev.Count) файлов событий: формат и порядок времени в норме, код 102 в $with" }
-
-Write-Host '== 9. Чужие паки не тронуты ==' -ForegroundColor Cyan
+Write-Host '== 7. Нет криков MP3 и правок анимаций смерти ==' -ForegroundColor Cyan
+# Громкие death_cry и событие 102 в анимациях смерти были ошибочной гипотезой (в игре криков не стало) — убраны
+$extra = @($ix.Files.Keys | Where-Object { $_ -like '*.mp3' -or $_ -like '*.anim_sound_event' })
+if ($extra.Count) { Bad "в паке остались убранные файлы: $($extra.Count) (например $($extra[0]))" } else { Ok 'MP3 криков и событий анимаций в паке нет' }
+Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
 # Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
 $backup = Get-ChildItem "$env:APPDATA\The Creative Assembly\Napoleon" -Directory -Filter '_backup_*' -ErrorAction SilentlyContinue | Sort-Object CreationTime | Select-Object -First 1
 $since = if ($backup) { $backup.CreationTime } else { (Get-Date).Date }
