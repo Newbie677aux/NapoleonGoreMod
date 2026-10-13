@@ -123,6 +123,25 @@ public static class Sfx
         return y;
     }
 
+    // Свист клинка: белый шум через полосовой фильтр (state-variable), центр скользит f0 -> f1,
+    // громкость нарастает к 70% длины и быстро спадает — как «вжик» мимо уха.
+    public static float[] Swish(double durSec, double f0, double f1, int seed)
+    {
+        var rnd = new Random(seed); int n = (int)(durSec * Rate); float[] y = new float[n];
+        double low = 0, band = 0, q = 0.6;
+        for (int i = 0; i < n; i++)
+        {
+            double t = (double)i / n;
+            double fc = f0 * Math.Pow(f1 / f0, t);
+            double f = 2 * Math.Sin(Math.PI * Math.Min(fc, Rate / 6.0) / Rate);
+            double x = rnd.NextDouble() * 2 - 1;
+            low += f * band; double high = x - low - q * band; band += f * high;
+            double env = t < 0.7 ? Math.Pow(Math.Sin(t / 0.7 * Math.PI / 2), 2) : Math.Pow(1 - (t - 0.7) / 0.3, 2);
+            y[i] = (float)(band * env);
+        }
+        return Normalize(y, 1.0);
+    }
+
     // Мягкое ограничение (tanh): поднимает среднюю громкость без жёсткого клиппинга.
     public static float[] SoftClip(float[] x, double drive)
     {

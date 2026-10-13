@@ -86,5 +86,34 @@ for ($i = 0; $i -lt 8; $i++) {
     $result.Add((Save-Sfx ("sfx\weapons\cannonballhitflesh\emp_hyb_cannonball_hitflesh_{0:D2}_v1.00_gme.wav" -f ($i + 1)) $w))
 }
 
+# Сабля по телу: свист клинка -> резкий (ускоренный) удар по мясу + мокрый шлепок. ~0.5 с.
+$sabreSpeed = 1.25, 1.15, 1.35, 1.20, 1.30, 1.10, 1.40, 1.22
+$sabreVoice = @{ 2 = 3; 5 = 4; 7 = 5 }
+for ($i = 0; $i -lt 8; $i++) {
+    $swishLen = 0.16 + 0.02 * ($i % 4)
+    $swish = [Sfx]::Swish($swishLen, 700 + 60 * $i, 3200 + 150 * $i, 100 + $i)
+    $hit = [Sfx]::Slice([Sfx]::Speed($meat[$i % 2], $sabreSpeed[$i]), 0, 0.25, 0.12)
+    $wet = [Sfx]::Slice($splats[$i + 4].Wave, 0, 0.28, 0.18)
+    $w = [Sfx]::Mix([Sfx]::Normalize($swish, 0.45), $hit, $swishLen * 0.85, 1.0)
+    $w = [Sfx]::Mix($w, $wet, $swishLen * 0.85 + 0.01, 0.8)
+    $w = [Sfx]::Normalize([Sfx]::SoftClip([Sfx]::Normalize($w, 1.0), 3.0), 0.98)
+    if ($sabreVoice.ContainsKey($i) -and $grunts.Count) { $w = Add-Voice $w $grunts[($sabreVoice[$i] * 5) % $grunts.Count] ($swishLen + 0.08) }
+    $result.Add((Save-Sfx ("sfx\weapons\sabre\emp_lib_sabre_slashflesh_{0:D2}_v1.00_gme.wav" -f ($i + 1)) $w))
+}
+
+# Штык в тело: короткий глухой выпад -> низкий удар + тягучий хлюп (замедленный шлепок). ~0.55 с.
+$stabSpeed = 0.90, 0.85, 0.95, 0.88, 0.92, 0.82, 0.97, 0.86
+$stabVoice = @{ 1 = 1; 4 = 2; 6 = 3 }
+for ($i = 0; $i -lt 8; $i++) {
+    $thrust = [Sfx]::Normalize([Sfx]::Swish(0.07, 300, 1100, 200 + $i), 0.35)
+    $hit = [Sfx]::LowPass([Sfx]::Slice([Sfx]::Speed($meat[($i + 1) % 2], $stabSpeed[$i]), 0, 0.30, 0.15), 3000)
+    $squelch = [Sfx]::Slice([Sfx]::Speed($splats[$i + 12].Wave, 0.72 + 0.03 * ($i % 3)), 0, 0.45, 0.25)
+    $w = [Sfx]::Mix($thrust, $hit, 0.06, 1.0)
+    $w = [Sfx]::Mix($w, $squelch, 0.075, 0.9)
+    $w = [Sfx]::Normalize([Sfx]::SoftClip([Sfx]::Normalize($w, 1.0), 3.0), 0.98)
+    if ($stabVoice.ContainsKey($i) -and $screams.Count) { $w = Add-Voice $w $screams[($stabVoice[$i] * 3 + 1) % $screams.Count] 0.15 }
+    $result.Add((Save-Sfx ("sfx\weapons\bayonet\emp_hyb_bayonet_stabflesh_{0:D2}_v1.00_gme.wav" -f ($i + 1)) $w))
+}
+
 Write-Host "Звуков собрано: $($result.Count) -> $Out" -ForegroundColor Green
 $result
