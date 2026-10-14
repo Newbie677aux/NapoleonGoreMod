@@ -147,7 +147,7 @@ else {
     if (@(Compare-Object @($changed) @($expect.Events.Keys)).Count) { Bad "изменены события $($changed -join ','), ожидались $(($expect.Events.Keys | Sort-Object) -join ',')" }
     else { Ok "изменено $($changed.Count) событий: $((($changed | ForEach-Object { $expect.Events[$_] }) -join '; '))" }
     $d = $b.Params[[int]$b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Param]
-    Write-Host ("        предсмертный крик: громкость {0}, без затухания до {1} м, затухание {2}, слышно до {3} м, вероятность {4}, вариантов {5}" -f $d[0], $d[3], $d[5], $d[4], $d[11], $b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Waves.Count)
+    Write-Host ("        предсмертный крик: громкость {0}, без затухания до {1} ед., затухание {2}, слышно до {3} ед. (1 ед. ≈ 14 м), вероятность {4}, вариантов {5}" -f $d[0], $d[3], $d[5], $d[4], $d[11], $b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Waves.Count)
     $db0 = Read-PackFile $sp 'sounds_packed\sound_bank_database'; $db = Read-PackFile $Pack 'sounds_packed\sound_bank_database'
     $diff = @(for ($k = 0; $k -lt $db0.Length; $k++) { if ($db0[$k] -ne $db[$k]) { $k } })
     if ($db.Length -ne $db0.Length -or @($diff | Where-Object { $_ -lt $GoreBankTimersOffset -or $_ -ge $GoreBankTimersOffset + 24 }).Count) { Bad 'sound_bank_database изменён не только в таймерах голосов' }
