@@ -124,5 +124,16 @@ function Get-GoreSoundEvents([byte[]]$src, [string]$soundPack) {
         if ($done.ContainsKey($h[0])) { $done[$h[0]] += ", $($h[1])"; continue }   # одно событие на две строки csv
         Set-SoundEventParams $se $h[0] $h[2]; $done[$h[0]] = $h[1]
     }
-    @{ Bytes = (Write-SoundEvents $se); Events = $done }
+    # Опечатка разработчиков: у предсмертного крика 6 из 17 файлов записаны как uk\actor9\..., а в
+    # sound.pack они лежат в uk\actor_9\... — игра выбирала несуществующий файл и примерно треть смертей
+    # проходила молча. Чиним только пути, для которых исправленный файл реально есть.
+    $names = Get-PackNames $soundPack; $fixed = 0
+    foreach ($i in $done.Keys) {
+        $w = $se.Events[$i].Waves
+        for ($j = 0; $j -lt $w.Count; $j++) {
+            $fix = $w[$j] -replace '\\actor9\\', '\actor_9\'
+            if ($fix -ne $w[$j] -and -not $names.Contains($w[$j].ToLowerInvariant()) -and $names.Contains($fix.ToLowerInvariant())) { $w[$j] = $fix; $fixed++ }
+        }
+    }
+    @{ Bytes = (Write-SoundEvents $se); Events = $done; FixedWaves = $fixed }
 }

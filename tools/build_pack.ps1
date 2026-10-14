@@ -151,7 +151,7 @@ if (-not $NoSounds) {
     $soundPack = Join-Path $Data 'sound.pack'
     $g = Get-GoreSoundEvents (Read-PackFile $soundPack 'sounds_packed\sound_events') $soundPack
     $files['sounds_packed\sound_events'] = $g.Bytes
-    Write-Host "Звуковых событий изменено: $($g.Events.Count)"
+    Write-Host "Звуковых событий изменено: $($g.Events.Count), путей к несуществующим файлам исправлено: $($g.FixedWaves)"
     foreach ($i in ($g.Events.Keys | Sort-Object)) { Write-Host "        $i  $($g.Events[$i])" }
 }
 

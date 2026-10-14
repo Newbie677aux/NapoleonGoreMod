@@ -115,22 +115,30 @@ else {
     $same = $true
     for ($i = 0; $i -lt $a.Params.Count; $i++) { if (-not [Linq.Enumerable]::SequenceEqual($a.Params[$i], $b.Params[$i])) { $same = $false } }
     if ($same) { Ok "старые $($a.Params.Count) наборов параметров не тронуты, добавлено $($b.Params.Count - $a.Params.Count)" } else { Bad 'изменены общие наборы параметров (заденет чужие звуки)' }
-    $changed = @(); $badF = @()
+    $changed = @(); $badF = @(); $wfix = 0; $names = Get-PackNames $sp
     for ($i = 0; $i -lt $a.Events.Count; $i++) {
         $x = $a.Events[$i]; $y = $b.Events[$i]
-        if ($x.Category -ne $y.Category -or $x.Name -ne $y.Name -or ($x.Waves -join '|') -ne ($y.Waves -join '|')) { $badF += "событие ${i}: файлы/категория" }
+        if ($x.Category -ne $y.Category -or $x.Name -ne $y.Name -or $x.Waves.Count -ne $y.Waves.Count) { $badF += "событие ${i}: категория/число файлов" }
+        else { for ($j = 0; $j -lt $x.Waves.Count; $j++) { if ($x.Waves[$j] -ne $y.Waves[$j]) {
+            # допустима только починка пути к несуществующему файлу (опечатка actor9 -> actor_9)
+            if ($names.Contains($x.Waves[$j].ToLowerInvariant()) -or -not $names.Contains($y.Waves[$j].ToLowerInvariant())) { $badF += "событие ${i}: файл $($y.Waves[$j])" } else { $wfix++ }
+        } } }
         if ($x.Param -ne $y.Param) {
             $changed += $i
             $pa = $a.Params[[int]$x.Param]; $pb = $b.Params[[int]$y.Param]
             for ($j = 0; $j -lt $pa.Count; $j++) { if ($pa[$j] -ne $pb[$j] -and @(0, 3, 4, 11, 33) -notcontains $j) { $badF += "событие ${i}: колонка $($j + 2)" } }
         }
     }
-    if ($badF.Count) { Bad "лишние изменения: $($badF[0..([math]::Min(4, $badF.Count - 1))] -join '; ')" } else { Ok 'менялись только громкость/дальность/вероятность/лимит' }
+    if ($badF.Count) { Bad "лишние изменения: $($badF[0..([math]::Min(4, $badF.Count - 1))] -join '; ')" } else { Ok "менялись только громкость/дальность/вероятность/лимит (+ исправлено путей к несуществующим файлам: $wfix)" }
+    $missing = @(foreach ($i in $expect.Events.Keys) { $b.Events[$i].Waves | Where-Object { -not $names.Contains($_.ToLowerInvariant()) -and -not $ix.Files.ContainsKey($_) } })
+    if ($missing.Count) { Bad "у изменённых событий нет файлов: $($missing -join ', ')" } else { Ok 'все файлы изменённых событий существуют (в sound.pack или в моде)' }
+    if ([Linq.Enumerable]::SequenceEqual([byte[]]$expect.Bytes, [byte[]](Read-PackFile $Pack 'sounds_packed\sound_events'))) { Ok 'совпадает со свежей сборкой из sound.pack байт-в-байт' } else { Bad 'отличается от свежей сборки — пак устарел, пересоберите' }
     if (@(Compare-Object @($changed) @($expect.Events.Keys)).Count) { Bad "изменены события $($changed -join ','), ожидались $(($expect.Events.Keys | Sort-Object) -join ',')" }
     else { Ok "изменено $($changed.Count) событий: $((($changed | ForEach-Object { $expect.Events[$_] }) -join '; '))" }
     $d = $b.Params[[int]$b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Param]
     Write-Host ("        предсмертный крик: громкость {0}, без затухания до {1} м, слышно до {2} м, вероятность {3}" -f $d[0], $d[3], $d[4], $d[11])
-}Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
+}
+Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
 # Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
 $backup = Get-ChildItem "$env:APPDATA\The Creative Assembly\Napoleon" -Directory -Filter '_backup_*' -ErrorAction SilentlyContinue | Sort-Object CreationTime | Select-Object -First 1
 $since = if ($backup) { $backup.CreationTime } else { (Get-Date).Date }

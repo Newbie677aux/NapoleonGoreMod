@@ -45,6 +45,22 @@ function Read-PackFiles([string]$pack, [string]$pattern) {
     $result
 }
 
+# Все пути в паке (в нижнем регистре) — без чтения данных
+function Get-PackNames([string]$pack) {
+    $fs = [IO.File]::OpenRead($pack); $br = New-Object IO.BinaryReader($fs)
+    $result = New-Object 'Collections.Generic.HashSet[string]'
+    try {
+        $null = $br.ReadBytes(4); $null = $br.ReadUInt32(); $null = $br.ReadUInt32(); $depSize = $br.ReadUInt32()
+        $count = $br.ReadUInt32(); $idxSize = $br.ReadUInt32()
+        $null = $br.ReadBytes($depSize); $idx = $br.ReadBytes($idxSize); $p = 0
+        for ($i = 0; $i -lt $count; $i++) {
+            $p += 4; $e = [Array]::IndexOf($idx, [byte]0, $p)
+            $null = $result.Add([Text.Encoding]::ASCII.GetString($idx, $p, $e - $p).ToLowerInvariant()); $p = $e + 1
+        }
+    } finally { $br.Close() }
+    , $result
+}
+
 # ---------- запись PFH0 (без сжатия) ----------
 function Write-Pack([string]$path, [int]$type, [hashtable]$files) {
     $names = $files.Keys | Sort-Object
