@@ -138,12 +138,15 @@ $GoreSoundPatterns = @(
 )
 
 # Событию-ключу отдаются файлы события-значения (параметры не меняются).
-# «Революционные» события выбора отряда привязаны ещё и ко всему классу infantry_line, поэтому линейная
-# пехота, которой нет в списках банка (русские, прусские и др. полки DarthMod), кричала
-# «Революционная гвардия!» / «Гвардия!». Теперь там реплики обычной линейной пехоты.
-$GoreWaveCopies = [ordered]@{
-    'unit_voices_selected_Infantry_Revolutionary' = 'unit_voices_selected_Infantry_Line'
-    'unit_voices_selected_French_Revolutionary'   = 'unit_voices_selected_Infantry_Line'
+# Все 9 событий выбора отряда, привязанных к классу infantry_line, движок, судя по игре, берёт для любой
+# линейной пехоты: русские/прусские мушкетёры (у них своё событие без «революции») кричали
+# «Революционная гвардия!», «Гвардия!» и т. п. В этих событиях чужие названия: революционная гвардия,
+# гвардия, KGL, польский легион, швейцарцы, стрелки, низам-и джедид. Теперь во всех — реплики обычной
+# линейной пехоты («Линейная пехота» + общие фразы).
+$GoreWaveCopies = [ordered]@{}
+foreach ($n in 'Infantry_Revolutionary', 'French_Revolutionary', 'Infantry_Musketeers', 'Infantry_KGL', 'Polish_Legion',
+               'Swiss_Foot', 'Cedit_Infantry', 'Provincial_Cedit_Infantry') {
+    $GoreWaveCopies["unit_voices_selected_$n"] = 'unit_voices_selected_Infantry_Line'
 }
 
 # Таймеры голосов из sound_settings.xml, скомпилированные в sounds_packed\sound_bank_database
