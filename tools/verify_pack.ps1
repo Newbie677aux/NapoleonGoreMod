@@ -6,6 +6,7 @@ param([string]$GameDir = 'E:\Steam\steamapps\common\Napoleon Total War')
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\packlib.ps1"
+. "$PSScriptRoot\soundevents.ps1"
 $Data = Join-Path $GameDir 'data'
 $Pack = Join-Path $Data 'zz_NapoleonGoreMod.pack'
 $fail = 0; $warn = 0
@@ -101,29 +102,35 @@ Write-Host '== 7. Нет криков MP3 и правок анимаций см�
 # Громкие death_cry и событие 102 в анимациях смерти были ошибочной гипотезой (в игре криков не стало) — убраны
 $extra = @($ix.Files.Keys | Where-Object { $_ -like '*.mp3' -or $_ -like '*.anim_sound_event' })
 if ($extra.Count) { Bad "в паке остались убранные файлы: $($extra.Count) (например $($extra[0]))" } else { Ok 'MP3 криков и событий анимаций в паке нет' }
-Write-Host '== 7a. Таблицы звуковых событий: изменены только нужные строки ==' -ForegroundColor Cyan
-$expectRows = @{
-    'sounds\events\sound_events_voices_land.csv' = @('Unit_Voices_Death_Gen')
-    'sounds\events\sound_events_weapons.csv'     = @('PROJECTILE_BulletImpactFlesh', 'PROJECTILE_CannonballImpactFlesh')
-    'sounds\events\sound_events_animations.csv'  = @('axe_hit_flesh', 'bayonet_hit_flesh', 'bayonet_impact_flesh', 'club_hit_flesh',
-        'lance_spear_hit_flesh', 'longsword_hit_flesh', 'pike_hit_flesh', 'sabre_hit_flesh', 'musket_impact_body')
-}
-$ourCsv = Read-PackFiles $Pack '^sounds\\events\\.*\.csv$'
-$origCsv = Read-PackFiles (Join-Path $Data 'sound.pack') '^sounds\\events\\.*\.csv$'
-foreach ($k in $ourCsv.Keys) {
-    $a = $Latin1.GetString($origCsv[$k]) -split "`r`n"; $b = $Latin1.GetString($ourCsv[$k]) -split "`r`n"
-    if ($a.Count -ne $b.Count) { Bad "$k : число строк изменилось ($($a.Count) -> $($b.Count))"; continue }
-    $changed = @(for ($i = 0; $i -lt $a.Count; $i++) { if ($a[$i] -ne $b[$i]) { ($b[$i] -split ',')[0].Trim('"') } })
-    $diffCols = @(for ($i = 0; $i -lt $a.Count; $i++) { if ($a[$i] -ne $b[$i]) {
-        $fa = $a[$i] -split ','; $fb = $b[$i] -split ','
-        if ($fa.Count -ne $fb.Count) { 'число колонок' } else { for ($c = 0; $c -lt $fa.Count; $c++) { if ($fa[$c] -ne $fb[$c] -and @(2, 5, 6, 13, 35) -notcontains $c) { "колонка $c" } } }
-    } })
-    if (@(Compare-Object @($expectRows[$k]) $changed).Count) { Bad "$k : изменены строки $($changed -join ', ')" }
-    elseif ($diffCols.Count) { Bad "$k : тронуты лишние колонки ($($diffCols -join ', '))" }
-    else { Ok "$(Split-Path $k -Leaf): изменено $($changed.Count) строк, только громкость/дальность/вероятность/лимит" }
-}
-if ($ourCsv.Count -ne $expectRows.Count) { Bad "таблиц событий в паке $($ourCsv.Count), ожидалось $($expectRows.Count)" }
-Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
+Write-Host '== 7a. Таблица звуков sounds_packed\sound_events: изменено только нужное ==' -ForegroundColor Cyan
+$csvLeft = @($ix.Files.Keys | Where-Object { $_ -like 'sounds\events\*' })
+if ($csvLeft.Count) { Bad "в паке csv-таблицы, которые игра не читает: $($csvLeft -join ', ')" }
+$sp = Join-Path $Data 'sound.pack'
+$origB = Read-PackFile $sp 'sounds_packed\sound_events'
+$a = Read-SoundEvents $origB; $b = Read-SoundEvents (Read-PackFile $Pack 'sounds_packed\sound_events')
+$expect = (Get-GoreSoundEvents $origB $sp)
+if ([Linq.Enumerable]::SequenceEqual([byte[]](Write-SoundEvents $b), [byte[]](Read-PackFile $Pack 'sounds_packed\sound_events'))) { Ok 'файл разбирается и собирается обратно байт-в-байт' } else { Bad 'файл не собирается обратно байт-в-байт' }
+if ($a.Events.Count -ne $b.Events.Count -or $a.Categories.Count -ne $b.Categories.Count) { Bad "число событий/категорий изменилось" }
+else {
+    $same = $true
+    for ($i = 0; $i -lt $a.Params.Count; $i++) { if (-not [Linq.Enumerable]::SequenceEqual($a.Params[$i], $b.Params[$i])) { $same = $false } }
+    if ($same) { Ok "старые $($a.Params.Count) наборов параметров не тронуты, добавлено $($b.Params.Count - $a.Params.Count)" } else { Bad 'изменены общие наборы параметров (заденет чужие звуки)' }
+    $changed = @(); $badF = @()
+    for ($i = 0; $i -lt $a.Events.Count; $i++) {
+        $x = $a.Events[$i]; $y = $b.Events[$i]
+        if ($x.Category -ne $y.Category -or $x.Name -ne $y.Name -or ($x.Waves -join '|') -ne ($y.Waves -join '|')) { $badF += "событие ${i}: файлы/категория" }
+        if ($x.Param -ne $y.Param) {
+            $changed += $i
+            $pa = $a.Params[[int]$x.Param]; $pb = $b.Params[[int]$y.Param]
+            for ($j = 0; $j -lt $pa.Count; $j++) { if ($pa[$j] -ne $pb[$j] -and @(0, 3, 4, 11, 33) -notcontains $j) { $badF += "событие ${i}: колонка $($j + 2)" } }
+        }
+    }
+    if ($badF.Count) { Bad "лишние изменения: $($badF[0..([math]::Min(4, $badF.Count - 1))] -join '; ')" } else { Ok 'менялись только громкость/дальность/вероятность/лимит' }
+    if (@(Compare-Object @($changed) @($expect.Events.Keys)).Count) { Bad "изменены события $($changed -join ','), ожидались $(($expect.Events.Keys | Sort-Object) -join ',')" }
+    else { Ok "изменено $($changed.Count) событий: $((($changed | ForEach-Object { $expect.Events[$_] }) -join '; '))" }
+    $d = $b.Params[[int]$b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Param]
+    Write-Host ("        предсмертный крик: громкость {0}, без затухания до {1} м, слышно до {2} м, вероятность {3}" -f $d[0], $d[3], $d[4], $d[11])
+}Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
 # Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
 $backup = Get-ChildItem "$env:APPDATA\The Creative Assembly\Napoleon" -Directory -Filter '_backup_*' -ErrorAction SilentlyContinue | Sort-Object CreationTime | Select-Object -First 1
 $since = if ($backup) { $backup.CreationTime } else { (Get-Date).Date }

@@ -19,12 +19,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\packlib.ps1"
+. "$PSScriptRoot\soundevents.ps1"
 
 $Data     = Join-Path $GameDir 'data'
 $Source   = Join-Path $Data 'DMN_Darth_Effects_Napoleon.pack'
 $OutDir   = Join-Path $PSScriptRoot '..\build'
 $PackName = 'zz_NapoleonGoreMod.pack'
-$TestPacks = @('zz_gore_test.pack', '!gore_test_blue.pack', 'zz_gore_test_green.pack')
+$TestPacks = @('zz_gore_test.pack', '!gore_test_blue.pack', 'zz_gore_test_green.pack', 'zz_gore_test_ui.pack', 'zz_gore_test_ui2.pack')
 
 function Remove-FromData([string[]]$names) {
     foreach ($n in $names) {
@@ -144,24 +145,14 @@ if (-not $NoSounds) {
     }
     Write-Host "Звуков в паке: $(@($files.Keys | Where-Object { $_ -like 'sfx\*' }).Count)"
 
-    # Громкость и дальность в таблицах звуковых событий (sounds\events\*.csv из sound.pack).
-    # Ваниль глушит всё «мясное»: попадание пули в тело — громкость 0.3 и слышно до 3 м от камеры,
-    # ядро 0.1, рукопашная 0.1 с затуханием от 10 см, предсмертный крик (Unit_Voices_Death_Gen — на него
-    # завязаны все смерти в сухопутном бою) 0.1 с затуханием от 16 см и только в 1/3 смертей.
-    # С камеры в 20-40 м этого не слышно — поэтому ни громкие файлы, ни стоны в ударе не помогали.
-    # Колонки: 2 громкость, 5 min_dist (до неё без затухания), 6 max_dist, 13 вероятность, 35 одновременно.
-    $ev = Read-PackFiles (Join-Path $Data 'sound.pack') '^sounds\\events\\sound_events_(voices_land|weapons|animations)\.csv$'
-    $csv = @{}; foreach ($k in $ev.Keys) { $csv[$k] = $Latin1.GetString($ev[$k]) }
-    $vl = 'sounds\events\sound_events_voices_land.csv'; $wp = 'sounds\events\sound_events_weapons.csv'; $an = 'sounds\events\sound_events_animations.csv'
-    $csv[$vl] = Set-SoundEvent $csv[$vl] 'Unit_Voices_Death_Gen' @{ 2 = '0.7'; 5 = '6'; 6 = '70'; 13 = '0.7'; 35 = '24' }
-    $csv[$wp] = Set-SoundEvent $csv[$wp] 'PROJECTILE_BulletImpactFlesh' @{ 2 = '0.5'; 5 = '2.5'; 6 = '40'; 35 = '16' }
-    $csv[$wp] = Set-SoundEvent $csv[$wp] 'PROJECTILE_CannonballImpactFlesh' @{ 2 = '0.6'; 5 = '6'; 6 = '120'; 35 = '8' }
-    foreach ($e in 'axe_hit_flesh', 'bayonet_hit_flesh', 'bayonet_impact_flesh', 'club_hit_flesh', 'lance_spear_hit_flesh',
-                   'longsword_hit_flesh', 'pike_hit_flesh', 'sabre_hit_flesh', 'musket_impact_body') {
-        $csv[$an] = Set-SoundEvent $csv[$an] $e @{ 2 = '0.45'; 5 = '3'; 6 = '45'; 35 = '16' }
-    }
-    foreach ($k in $csv.Keys) { $files[$k] = $Latin1.GetBytes($csv[$k]) }
-    Write-Host "Таблиц звуковых событий: $($csv.Count)"
+    # Громкость и дальность звуков. Игра читает скомпилированную таблицу sounds_packed\sound_events
+    # из sound.pack, а не sounds\events\*.csv (это исходники — правки в них ни на что не влияли,
+    # проверено в игре). Что именно меняется — $GoreSoundChanges в soundevents.ps1.
+    $soundPack = Join-Path $Data 'sound.pack'
+    $g = Get-GoreSoundEvents (Read-PackFile $soundPack 'sounds_packed\sound_events') $soundPack
+    $files['sounds_packed\sound_events'] = $g.Bytes
+    Write-Host "Звуковых событий изменено: $($g.Events.Count)"
+    foreach ($i in ($g.Events.Keys | Sort-Object)) { Write-Host "        $i  $($g.Events[$i])" }
 }
 
 $packPath = Join-Path $OutDir $PackName
