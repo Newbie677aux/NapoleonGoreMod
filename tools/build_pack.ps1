@@ -140,7 +140,8 @@ if (-not $NoSounds) {
     Write-Host '== Звуки попаданий ==' -ForegroundColor Cyan
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build_sounds.ps1" -VoiceEvery $(if ($NoVoices) { 0 } else { $VoiceEvery }) | Out-Null
     if ($LASTEXITCODE) { throw 'build_sounds.ps1 завершился с ошибкой' }
-    foreach ($f in Get-ChildItem (Join-Path $OutDir 'sfx') -Filter *.wav) {
+    # свои звуки сабли и штыка убраны (в игре звучали плохо) — рукопашная ванильная
+    foreach ($f in Get-ChildItem (Join-Path $OutDir 'sfx') -Filter *.wav | Where-Object { $_.Name -notmatch '__(sabre|bayonet)__' }) {
         $files[($f.Name -replace '__', '\')] = [IO.File]::ReadAllBytes($f.FullName)
     }
     Write-Host "Звуков в паке: $(@($files.Keys | Where-Object { $_ -like 'sfx\*' }).Count)"

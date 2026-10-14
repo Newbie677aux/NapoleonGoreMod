@@ -108,16 +108,16 @@ function Find-SoundEventsByCsv($se, [string]$csv, [string]$name) {
 
 # Что меняет мод: csv-файл, имя строки, @{ колонка = значение }. Используют build_pack и verify_pack.
 # Ваниль глушит всё «мясное»: пуля в тело — 0.3 и слышно до 3 м от камеры, ядро 0.1,
-# рукопашная 0.1 с затуханием от 10 см, предсмертный крик 0.1 с 16 см и только в трети смертей.
-$GoreMelee = @{ 2 = 0.45; 5 = 3; 6 = 45; 35 = 16 }
+# предсмертный крик 0.1 с 16 см и только в трети смертей.
+# Рукопашная (сабля, штык, пика и т. д.) — ванильная: громче/дальше и свои звуки сабли и штыка звучали
+# в игре плохо (пропадали, жёсткие шлепки), убраны по отзыву.
 $GoreSoundChanges = @(
     # крик: громко только рядом (полная громкость до 2 м, falloff 2 — круче, чем у команд офицеров
     # 2 м / 1.5), дальше быстро стихает; слышно до 60 м
     @('voices_land', 'Unit_Voices_Death_Gen', @{ 2 = 0.8; 5 = 2; 6 = 60; 7 = 2; 13 = 0.7; 35 = 24 }),
     @('weapons', 'PROJECTILE_BulletImpactFlesh', @{ 2 = 0.5; 5 = 2.5; 6 = 40; 35 = 16 }),
     @('weapons', 'PROJECTILE_CannonballImpactFlesh', @{ 2 = 0.6; 5 = 6; 6 = 120; 35 = 8 })
-) + @('axe_hit_flesh', 'bayonet_hit_flesh', 'bayonet_impact_flesh', 'club_hit_flesh', 'lance_spear_hit_flesh',
-      'longsword_hit_flesh', 'pike_hit_flesh', 'sabre_hit_flesh', 'musket_impact_body' | ForEach-Object { , @('animations', $_, $GoreMelee) })
+)
 
 # Дополнительные варианты звука (файлы игры, которые ни одно событие не использовало).
 # К 17 ванильным вариантам крика: ещё 4 предсмертных крика и 6 хрипов-стонов других актёров.
@@ -151,11 +151,11 @@ foreach ($n in 'Infantry_Revolutionary', 'French_Revolutionary', 'Infantry_Muske
 
 # Таймеры голосов из sound_settings.xml, скомпилированные в sounds_packed\sound_bank_database
 # (6 float по смещению 0x9c): idle min/max, exertion (рукопашная) min/max, incidental min/max.
-# Реплики в бою — чаще (было 15–30 с), кряхтение в рукопашной — чаще (было 5–10 с).
+# Реплики в бою — чаще (было 15–30 с). Кряхтение в рукопашной оставлено ванильным (5–10 с).
 # Incidental («Да, сэр!» и прочие подтверждения) не трогаем.
 $GoreBankTimersOffset = 0x9c
 $GoreBankTimersVanilla = [float[]](15, 30, 5, 10, 15, 30)
-$GoreBankTimers = [float[]](8, 16, 3, 6, 15, 30)
+$GoreBankTimers = [float[]](8, 16, 5, 10, 15, 30)
 
 function Get-GoreBankDatabase([byte[]]$src) {
     for ($k = 0; $k -lt 6; $k++) {
