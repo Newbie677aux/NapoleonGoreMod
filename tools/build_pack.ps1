@@ -151,6 +151,9 @@ if (-not $NoSounds) {
     $soundPack = Join-Path $Data 'sound.pack'
     $g = Get-GoreSoundEvents (Read-PackFile $soundPack 'sounds_packed\sound_events') $soundPack
     $files['sounds_packed\sound_events'] = $g.Bytes
+    $files['sounds_packed\sound_bank_database'] = Get-GoreBankDatabase (Read-PackFile $soundPack 'sounds_packed\sound_bank_database')
+    Write-Host "Таймеры голосов: реплики в бою $($GoreBankTimers[0])–$($GoreBankTimers[1]) с, рукопашная $($GoreBankTimers[2])–$($GoreBankTimers[3]) с"
+    foreach ($i in ($g.Copies.Keys | Sort-Object)) { Write-Host "        $i  файлы как у события $($g.Copies[$i][1]): $($g.Copies[$i][0])" }
     Write-Host "Звуковых событий изменено: $($g.Events.Count), путей к несуществующим файлам исправлено: $($g.FixedWaves), вариантов звука добавлено: $($g.AddedWaves)"
     foreach ($i in ($g.Events.Keys | Sort-Object)) { Write-Host "        $i  $($g.Events[$i])" }
 }

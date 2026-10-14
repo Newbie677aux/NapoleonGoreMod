@@ -77,6 +77,13 @@ function Set-SoundEventParams($se, [int]$event, [hashtable]$cols) {
     $se.Params.Add($f); $e.Param = $se.Params.Count - 1
 }
 
+# Ключ списка wav для сравнения: без учёта регистра и без повторов (компилятор игры оставляет каждый
+# файл один раз: у unit_voices_idle в csv 128 файлов, в бинарнике 127; у Infantry_Line 10 → 8).
+function Get-WaveKey([string[]]$waves) {
+    $seen = New-Object 'Collections.Generic.HashSet[string]'
+    (@(foreach ($w in $waves) { $x = $w.ToLowerInvariant(); if ($seen.Add($x)) { $x } })) -join '|'
+}
+
 # Номера событий, соответствующих строке csv $name: тот же список wav (без учёта регистра) и те же
 # основные числовые параметры (текстовые колонки вроде playback в бинарнике — номера).
 # Одинаковых событий бывает несколько (одна строка на разные анимации) — возвращаются все.
@@ -84,10 +91,10 @@ function Find-SoundEventsByCsv($se, [string]$csv, [string]$name) {
     $m = [regex]::Matches($csv, '(?m)^("?)' + [regex]::Escape($name) + '\1,[^\r\n]*')
     if ($m.Count -ne 1) { throw "Строка $name в csv: найдено $($m.Count)" }
     $f = $m[0].Value -split ','
-    $key = (@($f[37..($f.Count - 1)] | ForEach-Object { $_.Trim('"').ToLowerInvariant() } | Where-Object { $_ }) -join '|')
+    $key = Get-WaveKey @($f[37..($f.Count - 1)] | ForEach-Object { $_.Trim('"') } | Where-Object { $_ })
     $inv = [Globalization.CultureInfo]::InvariantCulture
     $found = @(foreach ($e in $se.Events) {
-        if ((($e.Waves | ForEach-Object { $_.ToLowerInvariant() }) -join '|') -ne $key) { continue }
+        if ((Get-WaveKey $e.Waves) -ne $key) { continue }
         $p = $se.Params[[int]$e.Param]; $same = $true
         foreach ($c in 2, 3, 4, 5, 6, 7, 8, 9, 13, 35, 36) {   # не все колонки 1:1 (например -1 в 26-й хранится как 0)
             $v = 0.0
@@ -122,15 +129,60 @@ $GoreExtraWaves = @{
         'uk\actor67\inf\inf_individuals_grunt_1.mp3', 'uk\actor67\inf\inf_individuals_grunt_2.mp3', 'uk\actor67\inf\inf_individuals_grunt_3.mp3')
 }
 
+# Те же правки для всех строк csv, чьё имя подходит под регулярку.
+# Реплики в бою (idle: по 128 фраз сержантов и солдат на род войск) в ванили звучат на 0.1, затухают
+# с 13 см и не слышны дальше 15 м — болтовня есть, но слышна, только если камера внутри отряда.
+# Делаем как у команд офицеров (2 м / до 45 м), чуть громче, и до 4 реплик одновременно.
+$GoreSoundPatterns = @(
+    , @('voices_land', '^unit_voices_idle', @{ 2 = 0.2; 5 = 2; 6 = 40; 35 = 4 })
+)
+
+# Событию-ключу отдаются файлы события-значения (параметры не меняются).
+# «Революционные» события выбора отряда привязаны ещё и ко всему классу infantry_line, поэтому линейная
+# пехота, которой нет в списках банка (русские, прусские и др. полки DarthMod), кричала
+# «Революционная гвардия!» / «Гвардия!». Теперь там реплики обычной линейной пехоты.
+$GoreWaveCopies = [ordered]@{
+    'unit_voices_selected_Infantry_Revolutionary' = 'unit_voices_selected_Infantry_Line'
+    'unit_voices_selected_French_Revolutionary'   = 'unit_voices_selected_Infantry_Line'
+}
+
+# Таймеры голосов из sound_settings.xml, скомпилированные в sounds_packed\sound_bank_database
+# (6 float по смещению 0x9c): idle min/max, exertion (рукопашная) min/max, incidental min/max.
+# Реплики в бою — чаще (было 15–30 с), кряхтение в рукопашной — чаще (было 5–10 с).
+# Incidental («Да, сэр!» и прочие подтверждения) не трогаем.
+$GoreBankTimersOffset = 0x9c
+$GoreBankTimersVanilla = [float[]](15, 30, 5, 10, 15, 30)
+$GoreBankTimers = [float[]](8, 16, 3, 6, 15, 30)
+
+function Get-GoreBankDatabase([byte[]]$src) {
+    for ($k = 0; $k -lt 6; $k++) {
+        $v = [BitConverter]::ToSingle($src, $GoreBankTimersOffset + 4 * $k)
+        if ($v -ne $GoreBankTimersVanilla[$k]) { throw "sound_bank_database: по 0x$('{0:x}' -f ($GoreBankTimersOffset + 4 * $k)) $v, ожидалось $($GoreBankTimersVanilla[$k])" }
+    }
+    $out = [byte[]]$src.Clone()
+    for ($k = 0; $k -lt 6; $k++) { [Array]::Copy([BitConverter]::GetBytes([single]$GoreBankTimers[$k]), 0, $out, $GoreBankTimersOffset + 4 * $k, 4) }
+    , $out
+}
+
 # Применяет $GoreSoundChanges к исходным байтам sound_events. Возвращает @{ Bytes; Events = номер → имя }.
 function Get-GoreSoundEvents([byte[]]$src, [string]$soundPack) {
     $csvs = Read-PackFiles $soundPack '^sounds\\events\\sound_events_(voices_land|weapons|animations)\.csv$'
     $se = Read-SoundEvents $src
     # сначала ищем все (поиск сравнивает параметры), потом меняем
-    $hits = @(foreach ($ch in $GoreSoundChanges) {
-        $csv = [Text.Encoding]::ASCII.GetString($csvs["sounds\events\sound_events_$($ch[0]).csv"])
-        foreach ($i in (Find-SoundEventsByCsv $se $csv $ch[1])) { , @($i, $ch[1], $ch[2]) }
+    $csvText = @{}; foreach ($k in $csvs.Keys) { $csvText[($k -replace '^.*sound_events_|\.csv$', '')] = [Text.Encoding]::ASCII.GetString($csvs[$k]) }
+    $changes = @($GoreSoundChanges) + @(foreach ($pt in $GoreSoundPatterns) {
+        [regex]::Matches($csvText[$pt[0]], '(?m)^"?([^",\r\n]+)"?,') | ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { $_ -match "(?i)$($pt[1])" } | Select-Object -Unique | ForEach-Object { , @($pt[0], $_, $pt[2]) }
     })
+    $hits = @(foreach ($ch in $changes) {
+        foreach ($i in (Find-SoundEventsByCsv $se $csvText[$ch[0]] $ch[1])) { , @($i, $ch[1], $ch[2]) }
+    })
+    $copies = @{}
+    foreach ($dst in $GoreWaveCopies.Keys) {
+        $from = @(Find-SoundEventsByCsv $se $csvText['voices_land'] $GoreWaveCopies[$dst])[0]
+        foreach ($i in (Find-SoundEventsByCsv $se $csvText['voices_land'] $dst)) { $copies[$i] = @($dst, $from) }
+    }
+    foreach ($i in $copies.Keys) { $se.Events[$i].Waves = [string[]]$se.Events[$copies[$i][1]].Waves.Clone() }
     $done = @{}
     foreach ($h in $hits) {
         if ($done.ContainsKey($h[0])) { $done[$h[0]] += ", $($h[1])"; continue }   # одно событие на две строки csv
@@ -157,5 +209,5 @@ function Get-GoreSoundEvents([byte[]]$src, [string]$soundPack) {
         foreach ($x in $new) { if (-not $names.Contains($x.ToLowerInvariant())) { throw "Нет файла $x в sound.pack" } }
         $se.Events[$i].Waves = [string[]]($w + $new); $added += $new.Count
     }
-    @{ Bytes = (Write-SoundEvents $se); Events = $done; FixedWaves = $fixed; AddedWaves = $added }
+    @{ Bytes = (Write-SoundEvents $se); Events = $done; FixedWaves = $fixed; AddedWaves = $added; Copies = $copies }
 }

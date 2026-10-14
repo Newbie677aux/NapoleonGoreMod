@@ -115,12 +115,16 @@ else {
     $same = $true
     for ($i = 0; $i -lt $a.Params.Count; $i++) { if (-not [Linq.Enumerable]::SequenceEqual($a.Params[$i], $b.Params[$i])) { $same = $false } }
     if ($same) { Ok "старые $($a.Params.Count) наборов параметров не тронуты, добавлено $($b.Params.Count - $a.Params.Count)" } else { Bad 'изменены общие наборы параметров (заденет чужие звуки)' }
-    $changed = @(); $badF = @(); $wfix = 0; $wadd = 0; $names = Get-PackNames $sp
+    $changed = @(); $badF = @(); $wfix = 0; $wadd = 0; $wcopy = 0; $names = Get-PackNames $sp
     for ($i = 0; $i -lt $a.Events.Count; $i++) {
         $x = $a.Events[$i]; $y = $b.Events[$i]
         $extraOk = $y.Waves.Count -gt $x.Waves.Count -and $expect.Events.ContainsKey($i) -and
             @($y.Waves[$x.Waves.Count..($y.Waves.Count - 1)] | Where-Object { -not $names.Contains($_.ToLowerInvariant()) }).Count -eq 0
         if ($extraOk) { $wadd += $y.Waves.Count - $x.Waves.Count }
+        if ($expect.Copies.ContainsKey($i)) {
+            if (($y.Waves -join '|') -ne ($a.Events[$expect.Copies[$i][1]].Waves -join '|')) { $badF += "событие ${i}: файлы не как у $($expect.Copies[$i][1])" } else { $wcopy++ }
+            continue
+        }
         if ($x.Category -ne $y.Category -or $x.Name -ne $y.Name -or ($x.Waves.Count -ne $y.Waves.Count -and -not $extraOk)) { $badF += "событие ${i}: категория/число файлов" }
         else { for ($j = 0; $j -lt $x.Waves.Count; $j++) { if ($x.Waves[$j] -ne $y.Waves[$j]) {
             # допустима только починка пути к несуществующему файлу (опечатка actor9 -> actor_9)
@@ -132,14 +136,23 @@ else {
             for ($j = 0; $j -lt $pa.Count; $j++) { if ($pa[$j] -ne $pb[$j] -and @(0, 3, 4, 5, 11, 33) -notcontains $j) { $badF += "событие ${i}: колонка $($j + 2)" } }
         }
     }
-    if ($badF.Count) { Bad "лишние изменения: $($badF[0..([math]::Min(4, $badF.Count - 1))] -join '; ')" } else { Ok "менялись только громкость/дальность/затухание/вероятность/лимит (+ исправлено путей: $wfix, добавлено вариантов из файлов игры: $wadd)" }
+    if ($badF.Count) { Bad "лишние изменения: $($badF[0..([math]::Min(4, $badF.Count - 1))] -join '; ')" } else { Ok "менялись только громкость/дальность/затухание/вероятность/лимит (+ исправлено путей: $wfix, добавлено вариантов из файлов игры: $wadd, событий с файлами линейной пехоты: $wcopy)" }
     $missing = @(foreach ($i in $expect.Events.Keys) { $b.Events[$i].Waves | Where-Object { -not $names.Contains($_.ToLowerInvariant()) -and -not $ix.Files.ContainsKey($_) } })
-    if ($missing.Count) { Bad "у изменённых событий нет файлов: $($missing -join ', ')" } else { Ok 'все файлы изменённых событий существуют (в sound.pack или в моде)' }
+    # недостающие файлы, которые были и в ванильном событии (разработчики не записали фразу) — не наша ошибка
+    $vanillaMiss = @{}; foreach ($i in $expect.Events.Keys) { foreach ($w in $a.Events[$i].Waves) { $vanillaMiss[$w] = 1 } }
+    $ourMiss = @($missing | Where-Object { -not $vanillaMiss.ContainsKey($_) })
+    if ($ourMiss.Count) { Bad "мод ссылается на несуществующие файлы: $($ourMiss -join ', ')" }
+    else { Ok "все файлы, которые вносит мод, существуют$(if ($missing.Count) { " (в ванили не хватает $($missing.Count) фраз — по одной из ~128 у отдельных отрядов, не трогаем)" })" }
     if ([Linq.Enumerable]::SequenceEqual([byte[]]$expect.Bytes, [byte[]](Read-PackFile $Pack 'sounds_packed\sound_events'))) { Ok 'совпадает со свежей сборкой из sound.pack байт-в-байт' } else { Bad 'отличается от свежей сборки — пак устарел, пересоберите' }
     if (@(Compare-Object @($changed) @($expect.Events.Keys)).Count) { Bad "изменены события $($changed -join ','), ожидались $(($expect.Events.Keys | Sort-Object) -join ',')" }
     else { Ok "изменено $($changed.Count) событий: $((($changed | ForEach-Object { $expect.Events[$_] }) -join '; '))" }
     $d = $b.Params[[int]$b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Param]
     Write-Host ("        предсмертный крик: громкость {0}, без затухания до {1} м, затухание {2}, слышно до {3} м, вероятность {4}, вариантов {5}" -f $d[0], $d[3], $d[5], $d[4], $d[11], $b.Events[($expect.Events.Keys | Where-Object { $expect.Events[$_] -eq 'Unit_Voices_Death_Gen' })].Waves.Count)
+    $db0 = Read-PackFile $sp 'sounds_packed\sound_bank_database'; $db = Read-PackFile $Pack 'sounds_packed\sound_bank_database'
+    $diff = @(for ($k = 0; $k -lt $db0.Length; $k++) { if ($db0[$k] -ne $db[$k]) { $k } })
+    if ($db.Length -ne $db0.Length -or @($diff | Where-Object { $_ -lt $GoreBankTimersOffset -or $_ -ge $GoreBankTimersOffset + 24 }).Count) { Bad 'sound_bank_database изменён не только в таймерах голосов' }
+    elseif (-not [Linq.Enumerable]::SequenceEqual([byte[]](Get-GoreBankDatabase $db0), [byte[]]$db)) { Bad 'sound_bank_database отличается от свежей сборки' }
+    else { Ok ("sound_bank_database: изменены только таймеры голосов (реплики {0}–{1} с, рукопашная {2}–{3} с)" -f $GoreBankTimers[0], $GoreBankTimers[1], $GoreBankTimers[2], $GoreBankTimers[3]) }
 }
 Write-Host '== 8. Чужие паки не тронуты ==' -ForegroundColor Cyan
 # Точка отсчёта — бэкап шага 1 (сделан до мода); без него — начало сегодняшнего дня
