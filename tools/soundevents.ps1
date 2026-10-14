@@ -104,11 +104,23 @@ function Find-SoundEventsByCsv($se, [string]$csv, [string]$name) {
 # рукопашная 0.1 с затуханием от 10 см, предсмертный крик 0.1 с 16 см и только в трети смертей.
 $GoreMelee = @{ 2 = 0.45; 5 = 3; 6 = 45; 35 = 16 }
 $GoreSoundChanges = @(
-    @('voices_land', 'Unit_Voices_Death_Gen', @{ 2 = 0.7; 5 = 6; 6 = 70; 13 = 0.7; 35 = 24 }),
+    # крик: громко только рядом (полная громкость до 2 м, falloff 2 — круче, чем у команд офицеров
+    # 2 м / 1.5), дальше быстро стихает; слышно до 60 м
+    @('voices_land', 'Unit_Voices_Death_Gen', @{ 2 = 0.8; 5 = 2; 6 = 60; 7 = 2; 13 = 0.7; 35 = 24 }),
     @('weapons', 'PROJECTILE_BulletImpactFlesh', @{ 2 = 0.5; 5 = 2.5; 6 = 40; 35 = 16 }),
     @('weapons', 'PROJECTILE_CannonballImpactFlesh', @{ 2 = 0.6; 5 = 6; 6 = 120; 35 = 8 })
 ) + @('axe_hit_flesh', 'bayonet_hit_flesh', 'bayonet_impact_flesh', 'club_hit_flesh', 'lance_spear_hit_flesh',
       'longsword_hit_flesh', 'pike_hit_flesh', 'sabre_hit_flesh', 'musket_impact_body' | ForEach-Object { , @('animations', $_, $GoreMelee) })
+
+# Дополнительные варианты звука (файлы игры, которые ни одно событие не использовало).
+# К 17 ванильным вариантам крика: ещё 4 предсмертных крика и 6 хрипов-стонов других актёров.
+$GoreExtraWaves = @{
+    'Unit_Voices_Death_Gen' = @(
+        'uk\actor_4\death_cry_fall_scream_1.mp3', 'uk\actor_4\death_cry_fall_scream_2.mp3',
+        'uk\actor_9\art\art_death_cry_fall_scream_1.mp3', 'uk\actor_9\art\art_death_cry_fall_scream_2.mp3',
+        'uk\actor_9\inf\inf_individuals_grunt_1.mp3', 'uk\actor_9\inf\inf_individuals_grunt_2.mp3', 'uk\actor_9\inf\inf_individuals_grunt_3.mp3',
+        'uk\actor67\inf\inf_individuals_grunt_1.mp3', 'uk\actor67\inf\inf_individuals_grunt_2.mp3', 'uk\actor67\inf\inf_individuals_grunt_3.mp3')
+}
 
 # Применяет $GoreSoundChanges к исходным байтам sound_events. Возвращает @{ Bytes; Events = номер → имя }.
 function Get-GoreSoundEvents([byte[]]$src, [string]$soundPack) {
@@ -135,5 +147,15 @@ function Get-GoreSoundEvents([byte[]]$src, [string]$soundPack) {
             if ($fix -ne $w[$j] -and -not $names.Contains($w[$j].ToLowerInvariant()) -and $names.Contains($fix.ToLowerInvariant())) { $w[$j] = $fix; $fixed++ }
         }
     }
-    @{ Bytes = (Write-SoundEvents $se); Events = $done; FixedWaves = $fixed }
+    $added = 0
+    foreach ($i in @($done.Keys)) {
+        $extra = $GoreExtraWaves[$done[$i]]
+        if (-not $extra) { continue }
+        $w = $se.Events[$i].Waves
+        $have = @($w | ForEach-Object { $_.ToLowerInvariant() })
+        $new = @($extra | Where-Object { $have -notcontains $_.ToLowerInvariant() })
+        foreach ($x in $new) { if (-not $names.Contains($x.ToLowerInvariant())) { throw "Нет файла $x в sound.pack" } }
+        $se.Events[$i].Waves = [string[]]($w + $new); $added += $new.Count
+    }
+    @{ Bytes = (Write-SoundEvents $se); Events = $done; FixedWaves = $fixed; AddedWaves = $added }
 }
